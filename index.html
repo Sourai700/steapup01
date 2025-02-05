@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レシート解析</title>
+    <style>
+        /* メインスタイル */
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(to right, #f8f9fa, #e9ecef);
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .upload-container {
+            max-width: 500px;
+            margin: 20px auto;
+            padding: 25px;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .upload-container:hover {
+            transform: translateY(-5px);
+        }
+
+        label {
+            display: block;
+            font-size: 16px;
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        /* 自定义文件上传按钮 */
+        .custom-file-upload {
+            display: inline-block;
+            padding: 12px 20px;
+            font-size: 16px;
+            color: white;
+            background-color: #007bff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-align: center;
+        }
+
+        .custom-file-upload:hover {
+            background-color: #0056b3;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* 图片预览区域 */
+        .preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .preview-container img {
+            width: 90px;
+            height: 90px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 2px solid #ddd;
+            transition: transform 0.3s;
+        }
+
+        .preview-container img:hover {
+            transform: scale(1.1);
+        }
+
+        /* 提交按钮 */
+        button {
+            margin-top: 20px;
+            padding: 10px 30px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        /* ローディングオーバーレイ */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* モーダルダイアログ */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            width: 90%;
+            max-width: 350px;
+        }
+
+        .modal-button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .modal-button:hover {
+            background-color: #0056b3;
+        }
+
+    </style>
+</head>
+<body>
+    <h1>📠 ファミリーマート レシート解析</h1>
+    <div class="upload-container">
+        <form action="process.php" method="POST" enctype="multipart/form-data" onsubmit="return showLoading()">
+         
+
+            <label for="receipts" style="cursor: pointer; padding: 10px 20px; background: #f0f0f0; border-radius: 5px;">
+                    🖼️ レシート画像を選択してください（複数可）
+                </label>
+                <input type="file" name="receipts[]" id="receipts" multiple accept="image/*" onchange="previewImages()">
+            </label>
+            <div class="preview-container" id="preview"></div>
+            <button type="submit" style="margin-top: 20px; padding: 10px 30px; background: #4CAF50; color: white; border: none; border-radius: 5px;">
+                    🔍 解析開始
+                </button>
+        </form>
+    </div>
+
+    <!-- ローディングオーバーレイ -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">処理中です。しばらくお待ちください...</div>
+    </div>
+
+    <!-- モーダルダイアログ -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div id="modalMessage" class="modal-message"></div>
+            <button class="modal-button" onclick="closeModal()">確認</button>
+        </div>
+    </div>
+
+    <script>
+        function previewImages() {
+            const input = document.getElementById('receipts');
+            const previewContainer = document.getElementById('preview');
+            previewContainer.innerHTML = '';
+            
+            if (input.files && input.files.length > 0) {
+                Array.from(input.files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        previewContainer.appendChild(img);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+        }
+
+        function showLoading() {
+            const input = document.getElementById('receipts');
+            
+            // ファイルが選択されているかチェック
+            if (!input.files || input.files.length === 0) {
+                showModal('画像を選択してください。');
+                return false;
+            }
+            
+            // 送信ボタンを無効化
+            document.querySelector('button[type="submit"]').disabled = true;
+            
+            // ローディングアニメーションを表示
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            loadingOverlay.style.display = 'flex';
+            
+            return true;
+        }
+
+        // モーダルを表示
+        function showModal(message) {
+            const modal = document.getElementById('modal');
+            const modalMessage = document.getElementById('modalMessage');
+            modalMessage.textContent = message;
+            modal.style.display = 'flex';
+        }
+
+        // モーダルを閉じる
+        function closeModal() {
+            const modal = document.getElementById('modal');
+            modal.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
